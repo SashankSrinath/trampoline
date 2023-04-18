@@ -49,6 +49,12 @@ STATIC VAR(tpl_application_mode, OS_VAR) application_mode_step = NOAPPMODE;
 #define OS_STOP_SEC_VAR_UNSPECIFIED
 #include "tpl_memmap.h"
 
+#define OS_START_SEC_VAR_NON_VOLATILE_16BIT
+#include "tpl_memmap.h"
+extern VAR (uint16,OS_VAR) voltage_measurement[2];
+#define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
+#include "tpl_memmap.h"
+
 #define OS_START_SEC_CODE
 #include "tpl_memmap.h"
 
@@ -191,26 +197,31 @@ FUNC(void, OS_CODE) tpl_choose_next_step(void){
     while (ptr_step == NULL)
     {
       /* Get energy level from ADC */
-      bool use1V2Ref = true;
-      tpl_adc_init_simple(use1V2Ref);
+      bool use1V2Ref = true; // Used to switch between 1.2V reference and 2V reference 
+      tpl_adc_init_simple(use1V2Ref); // The adc will calculate the value/2. So if energy is
+                                      // 2, it will give 1 
       /* Polling */
       uint16_t energy = readPowerVoltage_simple();
       uint16_t voltageInMillis;
-      if(energy == 0x0FFF){
+      if(energy == 0x0FFF){ // 12 bit ADC, Can read upto 1111 1111 1111. Setting use1V2ref to 
+                            // True means when the value is 0xFFF, we have 1.2ref. So the 
+                            // actual value is 2.4
         use1V2Ref = false;
         tpl_adc_init_simple(use1V2Ref);
         energy = readPowerVoltage_simple();
-        voltageInMillis = energy;
+        voltageInMillis = energy; //voltage measurement 
+        voltage_measurement[0] = voltageInMillis;
       }
       else{
-        voltageInMillis = energy*3/5;
+        voltageInMillis = energy*3/5; // Conversion from energy to volts 
+        voltage_measurement[0] = voltageInMillis;
       }
 
       for (i = 0; i < ENERGY_LEVEL_COUNT; i++)
-      {
-        tmp_ptr_step = (P2VAR(tpl_step, AUTOMATIC, OS_VAR))ptr_state[i];
+      {//P2VAR is pointer to variable
+        tmp_ptr_step = (P2VAR(tpl_step, AUTOMATIC, OS_VAR))ptr_state[i]; 
         if (voltageInMillis >= tmp_ptr_step->energy)
-        {
+        { // there also exists VAR, CONSTP2VAR, P2CONST CONSTP2CONST
           tpl_kern_resurrect.elected = tmp_ptr_step;
           ptr_step = tmp_ptr_step;
           break;

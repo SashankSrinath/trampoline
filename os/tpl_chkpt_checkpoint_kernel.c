@@ -38,6 +38,8 @@
 #include "msp430.h"
 #include <stdint.h>
 
+#include "tpl_chkpt_adc.h"
+
 #if NUMBER_OF_CORES > 1
 #include "tpl_os_multicore_kernel.h"
 # if SPINLOCK_COUNT > 0
@@ -57,6 +59,13 @@ extern FUNC(void, OS_CODE) tpl_restart_os(void);
 #define OS_START_SEC_VAR_NON_VOLATILE_16BIT
 #include "tpl_memmap.h"
 VAR (sint16,OS_VAR) tpl_checkpoint_buffer = -1;
+#define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
+#include "tpl_memmap.h"
+
+
+#define OS_START_SEC_VAR_NON_VOLATILE_16BIT
+#include "tpl_memmap.h"
+VAR (uint16,OS_VAR) voltage_measurement[2] = {0,10};
 #define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
 #include "tpl_memmap.h"
 
@@ -113,7 +122,7 @@ void tpl_RTC_init()
     RTCDOW = 0x00;
     RTCHOUR = 0x0;
     RTCMIN = 0x00;
-    RTCSEC = 40;
+    RTCSEC = 0x00;
     // reset all register alarm because they are in undefined state when reset
     RTCAHOUR &= ~(0x80);
     RTCADOW &= ~(0x80);
@@ -121,6 +130,53 @@ void tpl_RTC_init()
     // set alarm in next '1' minutes + enable interrupt
     #define PERIOD_WAKE_UP 0x01
     RTCAMIN = (PERIOD_WAKE_UP | (1<<7));
+    // Interrupt from alarm                     						
+    RTCCTL0_L = RTCAIE;
+    // RTCCTL0_H = 0x0;
+    // start rtc
+    RTCCTL1 &= ~(RTCHOLD);
+}
+
+// New function - to set the RTC to a specific value in sec
+void RTC_set(int seconds)
+{
+    uint16 minutes = seconds/60;
+    
+    // Unlock RTC key protected registers
+    RTCCTL0_H = RTCKEY_H;
+    // Clear RTCAIE RTCAIFG and AE bits to prevent potential erroneous alarm condition
+    RTCCTL0_L &= ~RTCAIE;
+    RTCCTL0_L &= ~RTCAIFG;
+    // Calendar + Hold, Hexa code
+    RTCCTL1 = RTCHOLD | RTCMODE;
+
+    // random date
+    RTCYEAR = 0x0000;
+    RTCMON = 0x0;
+    RTCDAY = 0x00;
+    RTCDOW = 0x00;
+    RTCHOUR = 0x0;
+    RTCMIN = 0x00;                         
+
+    // reset all register alarm because they are in undefined state when reset
+    RTCAHOUR &= ~(0x80);
+    RTCADOW &= ~(0x80);
+    RTCADAY &= ~(0x80);
+    // set rtc alarm in minutes and seconds
+      if(minutes!=0){
+        if(seconds!=0){
+            RTCSEC = 60-seconds;
+              RTCAMIN = ((RTCMIN +(minutes+1)) | (1<<7));
+          }
+          else{
+            RTCSEC = 0x00;
+            RTCAMIN = ((RTCMIN + minutes) | (1<<7));
+          }
+      }
+      else{
+        RTCSEC = 60 - seconds;
+        RTCAMIN = ((RTCMIN + 1) | (1<<7));
+      }
     // Interrupt from alarm                     						
     RTCCTL0_L = RTCAIE;
     // RTCCTL0_H = 0x0;
@@ -151,25 +207,75 @@ void tpl_lpm_hibernate()
 FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   // P1OUT |= BIT4;
   sint16 l_buffer;
-  l_buffer = (tpl_checkpoint_buffer + 1) % 2;
+  l_buffer = (tpl_checkpoint_buffer + 1) % 2; // 2 Buffers to save the values with some gap
   // tpl_save_checkpoint();
-  tpl_save_checkpoint_dma(l_buffer);
+  tpl_save_checkpoint_dma(l_buffer); // Done to ensure that data is not lost 
   tpl_checkpoint_buffer = l_buffer;
   
   uint16_t waiting_loop = 1;
-  init_adc();
+  // init_adc();
+  uint16_t predicted_time = 10;
+
   while(waiting_loop){
     P1OUT |= BIT4;
-    tpl_RTC_init(); //startRTC => interrupt next 1 min
-    if(tpl_ADC_read() > RESUME_FROM_HIBERNATE_THRESHOLD){
-      tpl_RTC_stop();
+    // tpl_rtc_set(predicted_time)
+    
+    RTC_set(predicted_time);
+    // tpl_RTC_init();
+    tpl_lpm_hibernate(); // go into sleep mode for a few seconds
+
+    get_voltage_measurement();
+
+    if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD){  // Here, check if enough voltage
+      tpl_RTC_stop(); // is present. If so, stop the clock and resume execution
 		  waiting_loop = 0;
 	  } else {
-      tpl_lpm_hibernate();
+      predicted_time = make_prediction();
 	  }
     P1OUT &= ~BIT4;
   }
 }
+
+
+FUNC(void, OS_CODE) get_voltage_measurement(void)
+{
+/* Get energy level from ADC */
+  bool use1V2Ref = true;
+  tpl_adc_init_simple(use1V2Ref); 
+  uint16_t energy = readPowerVoltage_simple();
+  if(energy == 0x0FFF){ // 12 bit ADC, Can read upto 1111 1111 1111. Setting use1V2ref to 
+                        // True means when the value is 0xFFF, we have 1.2ref. So the 
+                        // actual value is 2.4
+    use1V2Ref = false;
+    tpl_adc_init_simple(use1V2Ref);
+    energy = readPowerVoltage_simple();
+    voltage_measurement[1] = energy;
+  }
+  else{
+    voltage_measurement[1] = energy*3/5;
+  }
+}
+
+FUNC(uint16_t, OS_CODE) make_prediction(void)
+{
+  // lookup table :: taylor series :: fixed point calculation
+  if (voltage_measurement[0] > voltage_measurement[1])
+  {
+    return 60;
+  }
+
+  else
+  {
+    voltage_measurement[0] = ((voltage_measurement[0] + 25)/50) * 50; // Rounding to the nearest multiple of 50
+    voltage_measurement[1] = ((voltage_measurement[1] + 25)/50) * 50; // Values between 1800 and 2800 in multiples of 50
+
+    uint8_t v1 = (voltage_measurement[0] - 1800)/50; // Getting index to be able to put in lookup table 
+    uint8_t v2 = (voltage_measurement[1] - 1800)/50; // index 0-19 
+
+    return lookup_time[v1][v2];
+  }
+}
+
 
 FUNC(void, OS_CODE) tpl_hibernate_os_service(void)
 {
