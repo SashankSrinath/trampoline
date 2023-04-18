@@ -23,7 +23,7 @@ CPU base {
     };
     
     BUILD = TRUE {
-     TRAMPOLINE_BASE_PATH = "/Users/bernabeu-a/Code/trampoline";
+     TRAMPOLINE_BASE_PATH = "/home/sashank/resurrect_predict/trampoline";
      APP_SRC = "main.c";
      APP_SRC = "dnn.c";
      APP_SRC = "dnn_calc.c";
@@ -62,4 +62,8 @@ CPU base {
       
    #include "state_transition_resurrect.oil"
 };
+<<<<<<< HEAD
  
+=======
+ 
+>>>>>>> 728d998f (Adding prediction functionality)
