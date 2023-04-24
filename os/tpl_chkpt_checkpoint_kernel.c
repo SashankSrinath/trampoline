@@ -40,6 +40,8 @@
 
 #include "tpl_chkpt_adc.h"
 
+#include <math.h> // For computing the predicted time online
+
 #if NUMBER_OF_CORES > 1
 #include "tpl_os_multicore_kernel.h"
 # if SPINLOCK_COUNT > 0
@@ -138,9 +140,9 @@ void tpl_RTC_init()
 }
 
 // New function - to set the RTC to a specific value in sec
-void RTC_set(int seconds)
+void RTC_set(uint16_t seconds)
 {
-    uint16 minutes = seconds/60;
+    uint8_t minutes = seconds/60;
     
     // Unlock RTC key protected registers
     RTCCTL0_H = RTCKEY_H;
@@ -166,11 +168,11 @@ void RTC_set(int seconds)
       if(minutes!=0){
         if(seconds!=0){
             RTCSEC = 60-seconds;
-              RTCAMIN = ((RTCMIN +(minutes+1)) | (1<<7));
+              RTCAMIN = (minutes | (1<<7));
           }
           else{
             RTCSEC = 0x00;
-            RTCAMIN = ((RTCMIN + minutes) | (1<<7));
+            RTCAMIN = (minutes | (1<<7));
           }
       }
       else{
@@ -212,7 +214,7 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   tpl_save_checkpoint_dma(l_buffer); // Done to ensure that data is not lost 
   tpl_checkpoint_buffer = l_buffer;
   
-  uint16_t waiting_loop = 1;
+  uint8_t waiting_loop = 1;
   // init_adc();
   uint16_t predicted_time = 10;
 
@@ -229,9 +231,18 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
     if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD){  // Here, check if enough voltage
       tpl_RTC_stop(); // is present. If so, stop the clock and resume execution
 		  waiting_loop = 0;
-	  } else {
-      predicted_time = make_prediction();
-	  }
+	  } 
+    else 
+    {
+      if (voltage_measurement[0] < voltage_measurement[1])
+      {
+        // predicted_time = make_prediction();
+        // predicted_time = calculate_prediction(predicted_time);
+        predicted_time = approx_prediction(predicted_time);
+        voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old measurement. 
+      }   
+    }
+    // When another measurement is taken it goes to the voltage_measurement[1]
     P1OUT &= ~BIT4;
   }
 }
@@ -243,9 +254,8 @@ FUNC(void, OS_CODE) get_voltage_measurement(void)
   bool use1V2Ref = true;
   tpl_adc_init_simple(use1V2Ref); 
   uint16_t energy = readPowerVoltage_simple();
-  if(energy == 0x0FFF){ // 12 bit ADC, Can read upto 1111 1111 1111. Setting use1V2ref to 
-                        // True means when the value is 0xFFF, we have 1.2ref. So the 
-                        // actual value is 2.4
+  if(energy == 0x0FFF){ // 12 bit ADC, Can read upto 1111 1111 1111. Setting use1V2ref to True means when the value is 0xFFF, 
+                        //  we have 1.2V ref. So the actual value is 2.4
     use1V2Ref = false;
     tpl_adc_init_simple(use1V2Ref);
     energy = readPowerVoltage_simple();
@@ -259,23 +269,38 @@ FUNC(void, OS_CODE) get_voltage_measurement(void)
 FUNC(uint16_t, OS_CODE) make_prediction(void)
 {
   // lookup table :: taylor series :: fixed point calculation
-  if (voltage_measurement[0] > voltage_measurement[1])
-  {
-    return 60;
-  }
+  voltage_measurement[0] = ((voltage_measurement[0] + 32)>>6) * 64; // Rounding to the nearest multiple of 64
+  voltage_measurement[1] = ((voltage_measurement[1] + 32)>>6) * 64; // Values will now be between 1792 and 2816 in multiples of 64
 
-  else
-  {
-    voltage_measurement[0] = ((voltage_measurement[0] + 25)/50) * 50; // Rounding to the nearest multiple of 50
-    voltage_measurement[1] = ((voltage_measurement[1] + 25)/50) * 50; // Values between 1800 and 2800 in multiples of 50
+  uint8_t v1 = (voltage_measurement[0] - 1792)>>6; // Getting index to be able to search in lookup table 
+  uint8_t v2 = (voltage_measurement[1] - 1792)>>6; // index 0-16
 
-    uint8_t v1 = (voltage_measurement[0] - 1800)/50; // Getting index to be able to put in lookup table 
-    uint8_t v2 = (voltage_measurement[1] - 1800)/50; // index 0-19 
-
-    return lookup_time[v1][v2];
-  }
+  return lookup_time[v1][v2];
 }
 
+FUNC(uint16_t, OS_CODE) calculate_prediction(uint16_t old_pred)
+{ // y = V_meas + V_max * ( 1 - e^( -x * slope / 3.5 ) ) was the equation of the line that best described the capacitor charging
+  // Here, since calc is done in mV, 3500 is used.
+  // To find time, which is x, theh equation becomes -> x = ( -3.5/slope ) * log(1 - ( y - V_meas ) / V_max )
+
+  // float slope = (voltage_measurement[1] - voltage_measurement[0])/predicted_time ;
+  //div by pred_time(10) can be replaced by 3500*10 next line
+  uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) *
+                                                      logf(1 - ((3300 - (float)voltage_measurement[0])/3300));
+  return pred;
+}
+
+FUNC(uint16_t, OS_CODE) approx_prediction(uint16_t old_pred)
+{
+  // Taylor series approximation -> to find approx of ln(x), use (x-1) - (x-1)²/2 + (x-1)³/3 ... More factors => more accuracy 
+  // Instead of calculating factor = 1 - ( 3.3 - measured_V ) / 3.3 and then doing (factor - 1) - (factor-1)²/2 ...
+  // factor is calculated as ( measured_V - 3.3 ) / 3.3 
+  float factor = ((float)voltage_measurement[0] - 3300)/3300;
+  uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) * 
+                                                     (factor - (factor*factor/2)) ; // + factor*factor*factor/3 ;
+                                                     
+  return pred;
+}
 
 FUNC(void, OS_CODE) tpl_hibernate_os_service(void)
 {
