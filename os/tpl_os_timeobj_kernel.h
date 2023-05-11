@@ -108,6 +108,11 @@ struct TPL_TIME_OBJ {
                                                                        alarm list                         */
     struct P2VAR(TPL_TIME_OBJ, TYPEDEF, OS_APPL_DATA) prev_to;    /**< previous alarm in the active
                                                                        alarm list                         */
+    #if WITH_RESURRECT == YES
+    VAR(int, OS_APPL_DATA)                       nb_iteration;    /* number of time the alarm is refreshed */
+    CONST(int, OS_CONST)                         reset_iteration; /* constant to reset iteration number */
+    CONST(tpl_event_mask, TYPEDEF)               al_event;
+    #endif /* WITH_RESURRECT */
     VAR(tpl_tick, TYPEDEF)                            cycle;      /**< cycle delay for cyclic alarms      */
     VAR(tpl_tick, TYPEDEF)                            date;       /**< absolute date of the alarm         */
     VAR(tpl_time_obj_state, TYPEDEF)                  state;      /**< state of the alarm. An alarm may

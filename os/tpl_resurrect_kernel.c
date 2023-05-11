@@ -221,10 +221,27 @@ FUNC(void, OS_CODE) tpl_choose_next_step(void){
       {//P2VAR is pointer to variable
         tmp_ptr_step = (P2VAR(tpl_step, AUTOMATIC, OS_VAR))ptr_state[i]; 
         if (voltageInMillis >= tmp_ptr_step->energy)
-        { // there also exists VAR, CONSTP2VAR, P2CONST CONSTP2CONST
+        {
+          #if WITH_RESURRECT_EVENT == YES
+          VAR(uint8, AUTOMATIC) j;
+          VAR(uint16, AUTOMATIC) mask = 0x0001;
+          for(j = 0; j < RESURRECT_EVENT_COUNT; j++){
+            if(((tpl_kern_resurrect.state_event & mask)>>j) == (tmp_ptr_step->resurrect_event[j])){
+              mask = mask<<1;
+            }
+            else{
+              break;
+            }
+            tpl_kern_resurrect.elected = tmp_ptr_step;
+            ptr_step = tmp_ptr_step;
+            // break;
+          }
+          // break;
+          #else
           tpl_kern_resurrect.elected = tmp_ptr_step;
           ptr_step = tmp_ptr_step;
           break;
+          #endif /* WITH_RESURRECT_EVENT */
         }
       }
       /* Not enough energy to elect next step --> hibernate */
@@ -240,9 +257,14 @@ FUNC(void, OS_CODE) tpl_choose_next_step(void){
     // tpl_proc_static *resurrect_proc = (tpl_proc_static *) the_proc;
     // CONSTP2VAR(tpl_proc_static, AUTOMATIC, OS_VAR) resurrect_proc = (CONSTP2VAR(tpl_proc_static, AUTOMATIC,OS_VAR))the_proc;
     resurrect_proc->entry = (tpl_proc_function)tpl_kern_resurrect.elected->entry_point;
-
-    // resurrect_proc->entry = ptr_step->entry_point;
-
+    #if WITH_RESURRECT_EVENT
+    /* Reset Event Resurrect */
+    for(i = 0; i < RESURRECT_EVENT_COUNT; i++){
+      if(tpl_kern_resurrect.elected->resurrect_event[i]==1){
+        tpl_kern_resurrect.state_event &= ~(1<<i);
+      }
+    }
+    #endif /* WITH_RESURRECT_EVENT */
     /* Activate the resurrect task */
     tpl_activate_task(RESURRECT_TASK_ID);
     /* Update tpl_kern_resurrect.state with next state from step elected */
@@ -293,5 +315,17 @@ FUNC(void, OS_CODE) tpl_terminate_step_resurrect_service(void){
   PROCESS_ERROR(result)
   return;
 }
+
+
+// #if WITH_RESURRECT_EVENT == YES
+// FUNC(void, OS_CODE) tpl_set_event_resurrect_service(
+//   CONST(EventResurrectType, AUTOMATIC) event_resurrect){
+
+//     tpl_kern_resurrect.state_event |= 1<<event_resurrect;
+
+//     return;
+// }
+
+// #endif // WITH_RESURRECT_EVENT
 
 #endif // WITH_RESURRECT

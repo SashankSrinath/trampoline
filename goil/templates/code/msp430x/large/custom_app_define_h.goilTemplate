@@ -86,6 +86,7 @@ end if
 
 let RESURRECT_STATE := exists RESURRECT_STATE default (@())
 let RESURRECT_TRANSITION := exists RESURRECT_TRANSITION default (@())
+let RESURRECT_EVENT := exists RESURRECT_EVENT default (@())
 
 %
 /*
@@ -93,12 +94,28 @@ let RESURRECT_TRANSITION := exists RESURRECT_TRANSITION default (@())
  */
 #define RESURRECT_STATE_COUNT    % ![RESURRECT_STATE length]% 
 #define RESURRECT_TRANSITION_COUNT    % ![RESURRECT_TRANSITION length]%
-
+#define RESURRECT_EVENT_COUNT     %![RESURRECT_EVENT length]%
 %
 if OS::RESURRECT then%
 #define ENERGY_LEVEL_COUNT    % !OS::RESURRECT_S::ENERGY_LEVEL%
 #define RESURRECT_TASK_ID 0
+#define WITH_RESURRECT_EVENT %! yesNo(exists OS::RESURRECT_S::EVENT default(false))%
 %
+if OS::RESURRECT_S::EVENT then
+#%typedef uint16 tpl_event_resurrect;
+#%
+
+foreach res_event in RESURRECT_EVENT before
+%
+/*
+ * ID of RESURRECT EVENT
+ */
+%
+do
+%#define %!res_event::NAME%  %!INDEX%
+%
+end foreach
+end if
 end if
 
 template if exists tpl_library_defines

@@ -35,6 +35,10 @@ if exists OS::TIMINGPROTECTION default (false) then
 #include "tpl_as_protec_hook.h"%
 end if
 
+if exists OS::RESURRECT_S::EVENT default(false) then
+%
+#include "tpl_resurrect_event_kernel.h"%
+end if
 template if exists extra_headers
 
 #---------------------------------------------------------------------------*

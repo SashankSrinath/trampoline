@@ -387,7 +387,10 @@ FUNC(void, OS_CODE) tpl_counter_tick(
                 ptr_al->al_nbActivation--;
               }
             } 
-            #endif
+            #endif /* WITH_SEQUENCING */
+            #if WITH_RESURRECT == YES
+            t_obj->nb_iteration--;
+            #endif /* WITH_RESURRECT */
             /*  get the next one                        */
             tpl_time_obj *next_to = t_obj->next_to;
             expire = t_obj->stat_part->expire;
@@ -405,7 +408,18 @@ FUNC(void, OS_CODE) tpl_counter_tick(
               /* make sure we don't rearm the alarm */
               t_obj->cycle = 0;
             }
-            #endif
+            #endif /* WITH_SEQUENCING */
+            #if WITH_RESURRECT == YES
+            if(t_obj->nb_iteration == 0){
+              /* reset nb_iteration and don't rearm the alarm */
+              t_obj->nb_iteration = t_obj->reset_iteration;
+              t_obj->cycle = 0;
+              /* set event to release current step */
+
+              // TODO: put id of resurrect task instead of hardcoded 0
+              tpl_set_event(0, t_obj->al_event);
+            }
+            #endif /* WITH_RESURRECT */
             /*  rearm the alarm if needed               */
 
             if (t_obj->cycle != 0)

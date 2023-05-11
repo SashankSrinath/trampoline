@@ -420,6 +420,19 @@ CPU api {
    } : "Terminate the current activity and start another one if possible.";
   };
   
+  APICONFIG resurrect_event {
+   ID_PREFIX = OS;
+   FILE = "tpl_resurrect_event_kernel";
+   DIRECTORY = "os";
+   SYSCALL SetEventResurrect {
+    KERNEL = tpl_set_event_resurrect_service;
+    LOCK_KERNEL = FALSE;
+    CALLABLE_BY_ISR1 = FALSE;
+    ARGUMENT event_resurrect {KIND = CONST; TYPE = EventResurrectType;}
+     : "The EventResurrect we want to set";
+   } : "The user can call this service to inform the resurrect kernel that an event occured.";
+  };
+  
   /*
    * OSEK com
    */

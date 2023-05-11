@@ -88,13 +88,13 @@ tpl_sc_handler_id_ok:
  * -3- We need to have the same stack pattern for both the tpl_sc_handler and
  * an interrupt handler which calls the operating system. 
  */
-  movx.w     2(r1), r13     /* Saved PC [19..16] -> r13                  */
+  movx.w     2(r1), r11     /* Saved PC [19..16] -> r11                  */
   movx.w     0(r1), 2(r1)   /* Copy saved PC [15..0] at the good place   */
-  swpbx    r13            /* Get saved PC [19..16] in bits 11..8       */
-  rlam     #4, r13        /* Shift them to bits 19..16                 */
-  bisx     r2, r13        /* Add the SR in its location at 11..0       */
-  bisx     #8, r13        /* set GIE bit (reset just before with dint) */
-  movx.w     r13, 0(r1)       /* The stack is ok                           */
+  swpbx    r11            /* Get saved PC [19..16] in bits 11..8       */
+  rlam     #4, r11        /* Shift them to bits 19..16                 */
+  bisx     r2, r11        /* Add the SR in its location at 11..0       */
+  bisx     #8, r11        /* set GIE bit (reset just before with dint) */
+  movx.w     r11, 0(r1)       /* The stack is ok                           */
 ;   pushx         sr
 ;   bicx.b        #0xF0, 1(r1)           /* reset the 4 higher bits of saved SR */
 ;   bisx.b        #0x08, 0(r1)           /* set the GIE bit in the saved SR     */

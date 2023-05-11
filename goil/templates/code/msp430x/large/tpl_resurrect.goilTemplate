@@ -54,6 +54,11 @@ foreach resurrect_transition in RESURRECT_TRANSITION do
   end if
 end foreach
 
+let listAlarm := @[]
+foreach al in ALARM do
+  let key := al::NAME
+  let listAlarm[key] := INDEX
+end foreach
 
 let listFunc := @[]
 foreach resurrect_transition in RESURRECT_TRANSITION do
@@ -81,7 +86,6 @@ extern void % !item %(void);
 %
 end foreach
 
-
 #------------------------------------------------------------------------------*
 %
 #define APP_COMMON_START_SEC_CODE
@@ -96,10 +100,37 @@ foreach resurrect_transition in RESURRECT_TRANSITION do
 %
 FUNC(void, OS_APPL_CODE) % !item% (void){   
 %
+      if exists resurrect_transition::ALARM then
+      foreach resurrect_transition_alarm in resurrect_transition::ALARM
+      do
+       foreach al in ALARM 
+       do
+       if resurrect_transition_alarm::VALUE == al::NAME then
+
+tab(5) %SetRelAlarm(%!al::NAME%, %!al::ALARMTIME%, %!al::CYCLETIME%);
+%     
+      end if
+      end foreach  
+      end foreach
+      end if
       do
 tab(5) !resurrect_transition_func::VALUE%();
 %
       after
+      if exists resurrect_transition::ALARM then
+      foreach resurrect_transition_alarm in resurrect_transition::ALARM
+      do
+       foreach al in ALARM 
+       do
+       if resurrect_transition_alarm::VALUE == al::NAME then
+      tab(5) %WaitEvent(ev_%!al::NAME%);
+%
+      tab(5) %ClearEvent(ev_%!al::NAME%);
+%
+      end if
+      end foreach 
+      end foreach
+      end if
 tab(5)%TerminateStepResurrect();
 }
 %
@@ -123,6 +154,7 @@ foreach resurrect_state in RESURRECT_STATE do
 end foreach
 
 #------------------------------------------------------------------------------*
+let RESURRECT_EVENT := exists RESURRECT_EVENT default (@())
 
 
 %
@@ -136,7 +168,32 @@ CONST(tpl_step, OS_CONST) step_% !resurrect_transition::NAME% = {
   .energy = % !resurrect_transition::ENERGY%
 , .to_state = % !listState[resurrect_transition::TO_STATE]%
 , .from_state = % !listState[resurrect_transition::FROM_STATE]%
-, .entry_point = % !resurrect_transition::ENTRY%
+, .entry_point = % !resurrect_transition::ENTRY%%
+if OS::RESURRECT_S::EVENT then%
+, .resurrect_event = {%
+  if [RESURRECT_EVENT length] == 0 then
+  %};%
+  else
+  foreach res_event in RESURRECT_EVENT 
+  do
+  if exists resurrect_transition::RES_EVENT then
+  foreach step_event in resurrect_transition::RES_EVENT do
+  if step_event::VALUE == res_event::NAME then
+  tab(4)%1%
+  else
+  tab(4)%0%
+  end if
+  end foreach
+  else
+  tab(4)%0%
+  end if
+  between
+  %,%
+  after%}%
+  end foreach
+  end if
+  end if
+%
 };
 %
 end foreach
@@ -170,7 +227,12 @@ end foreach
 VAR(tpl_kern_resurrect_state, OS_VAR) tpl_kern_resurrect =
 {
   NULL,                      /* no elected step   */
-  % !listState[initial_state]%,                         /* current state is STATE with INITIAL_STATE = TRUE */
+  % !listState[initial_state]%,                         /* current state is STATE with INITIAL_STATE = TRUE */%
+  if OS::RESURRECT_S::EVENT then
+  %
+  0,                        /* Events for choice of next step */%
+  end if
+%  
 };
 
 #define OS_START_SEC_CONST_UNSPECIFIED
@@ -196,11 +258,10 @@ CONSTP2VAR(tpl_step, AUTOMATIC, OS_APPL_DATA) step_from_state_%!resurrect_state:
       after
       if [transitionListEnergy length] < OS::RESURRECT_S::ENERGY_LEVEL then
        let null_count := OS::RESURRECT_S::ENERGY_LEVEL - [transitionListEnergy length]
-       for cnt in null_count
-       do
+       loop cnt from 1 to null_count step 1 do
          %
 , NULL%
-       end for
+        end loop
       end if
       %};
 %

@@ -54,6 +54,12 @@ VAR(tpl_time_obj, OS_VAR) % !alarm::NAME %_alarm_desc = {
     /* pointer to the static part   */  (tpl_time_obj_static *)&% !alarm::NAME %_static,
     /* next alarm                   */  NULL,
     /* prev alarm                   */  NULL,%
+if OS::RESURRECT then
+%
+    /* Number of iteration of alarm */  %!alarm::NB_ACTIVATION%,
+    /* Constant to reset iteration  */  %!alarm::NB_ACTIVATION%,
+    /* Event to release step        */  %!alarm::EV%,%
+end if
 if alarm::AUTOSTART then
 %
     /* cycle                        */  % !alarm::AUTOSTART_S::CYCLETIME %,

@@ -31,12 +31,25 @@
 #include "tpl_os_internal_types.h"
 #include "tpl_os_kernel.h"
 
+/**
+ * @typedef EventResurrectType
+ *
+ * identifies an event for resurrect
+ *
+ */
+typedef uint16 tpl_event_resurrect;
+
+typedef tpl_event_resurrect  EventResurrectType;
+
 struct TPL_STEP
 {
   CONST(uint32, TYPEDEF) energy;
   CONST(uint8, TYPEDEF) to_state;
   CONST(uint8, TYPEDEF) from_state;
   CONST(tpl_proc_function, TYPEDEF) entry_point;
+  #if WITH_RESURRECT_EVENT == YES
+  CONST(EventResurrectType, TYPEDEF) resurrect_event[RESURRECT_EVENT_COUNT];
+  #endif /* WITH_RESURRECT_EVENT */
 };
 
 typedef struct TPL_STEP tpl_step;
@@ -46,6 +59,9 @@ typedef struct
 {
   P2VAR(tpl_step, TYPEDEF, OS_VAR) elected;
   VAR(sint32, TYPEDEF) state;
+  #if WITH_RESURRECT_EVENT == YES
+  VAR(uint16, TYPEDEF) state_event;
+  #endif /* WITH_RESURRECT_EVENT */
 } tpl_kern_resurrect_state;
 
 #define OS_START_SEC_VAR_UNSPECIFIED
@@ -74,6 +90,8 @@ tpl_start_os_resurrect_service(CONST(tpl_application_mode, AUTOMATIC) mode);
 FUNC(void, OS_CODE) tpl_terminate_step_resurrect_service(void);
 
 FUNC(void, OS_CODE) tpl_choose_next_step(void);
+
+FUNC(void, OS_CODE) tpl_set_event_resurrect_service(CONST(EventResurrectType, AUTOMATIC) event_resurrect);
 #define OS_STOP_SEC_CODE
 #include "tpl_memmap.h"
 
