@@ -1,0 +1,107 @@
+OIL_VERSION = "2.5";
+
+IMPLEMENTATION trampoline {
+  TASK {
+   UINT32 STACKSIZE = 200;
+  };
+  
+  ISR {
+    UINT32 STACKSIZE = 100;
+    };
+};
+
+CPU base {
+  OS config {
+    STATUS = EXTENDED;
+    PAINT_STACK = TRUE;
+    PAINT_REGISTERS = TRUE;
+    CPU_FREQ_MHZ = 1;
+    IDLE_POWER_MODE = ACTIVE;
+    SYSTICK = TRUE;
+    RESURRECT = TRUE {ENERGY_LEVEL = 4;EVENT=FALSE;};
+    CHECKPOINTING = TRUE {MODE=STATIC {RESUME_FROM_HIBERNATE_THRESHOLD = 2800;};
+    };
+    
+    BUILD = TRUE {
+     TRAMPOLINE_BASE_PATH = "/Users/bernabeu-a/Code/trampoline";
+     APP_SRC = "main.c";
+     APP_NAME = "main_exe";
+     LIBRARY = checkpointing;
+     CFLAGS = "-O0 -g3 -gdwarf-2 -ggdb";
+//     CFLAGS    = "-mhwmult=none";
+     LDFLAGS = "-Map=main.map";
+     LDFLAGS = "--undefined=__mspabi_mpyi -lmul_f5";
+     COMPILER = "msp430-elf-gcc";
+     ASSEMBLER = "msp430-elf-gcc";
+     LINKER = "msp430-elf-ld";
+     COPIER = "msp430-elf-objcopy";
+     CFLAGS = "-I/opt/msp430-gcc-support-files/include";
+     SYSTEM = PYTHON;
+    };
+    SYSTEM_CALL = TRUE;
+    MEMMAP = TRUE {
+     COMPILER = gcc;
+     LINKER = gnu_ld { SCRIPT = "script.ld";};
+     ASSEMBLER = gnu_as;
+     MEMORY_PROTECTION = FALSE;
+    };
+   };
+   
+   APPMODE std {};
+EVENT ev_al_blink {
+ MASK = AUTO;
+};
+
+
+EVENT ev_al_blink2 {
+ MASK = AUTO;
+};   
+   TASK resurrect {
+    PRIORITY = 3;
+    AUTOSTART = FALSE;
+    ACTIVATION = 1;
+    SCHEDULE = FULL;
+    EVENT = ev_al_blink;
+    EVENT = ev_al_blink2;          
+   };
+   
+   TASK blink {
+     PRIORITY = 4;
+     AUTOSTART = FALSE;
+     ACTIVATION = 1;
+     SCHEDULE = FULL;
+   };
+
+   TASK blink2 {
+     PRIORITY = 4;
+     AUTOSTART = FALSE;
+     ACTIVATION = 1;
+     SCHEDULE = FULL;
+   };
+      
+   ALARM al_blink {
+    COUNTER = SystemCounter;
+    ACTION = ACTIVATETASK {
+      TASK = blink;
+    };
+    AUTOSTART = FALSE;
+    ALARMTIME = 1000;
+    CYCLETIME = 1000;
+    NB_ACTIVATION = 5;
+    EV = ev_al_blink;
+  };
+  
+   ALARM al_blink2 {
+    COUNTER = SystemCounter;
+    ACTION = ACTIVATETASK {
+      TASK = blink2;
+    };
+    AUTOSTART = FALSE;
+    ALARMTIME = 1000;
+    CYCLETIME = 1000;
+    NB_ACTIVATION = 3;
+    EV = ev_al_blink2;
+  };
+   #include "state_transition_resurrect.oil"
+};
+ 

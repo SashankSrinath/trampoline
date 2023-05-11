@@ -1,0 +1,22 @@
+RESURRECT_STATE Start {INITIAL_STATE=TRUE;};
+RESURRECT_STATE q_0 {};
+
+
+RESURRECT_TRANSITION Start_q_0{
+  FUNC=main_main;
+  ALARM=al_blink;
+  FROM_STATE=Start;
+  TO_STATE=q_0;
+  ENTRY=Start_q_0_func;
+  ENERGY=3300;
+};
+
+
+RESURRECT_TRANSITION q_0_Start{
+  FUNC=main_main;
+  ALARM=al_blink2;
+  FROM_STATE=q_0;
+  TO_STATE=Start;
+  ENTRY=q_0_Start_func;
+  ENERGY=3300;
+};
