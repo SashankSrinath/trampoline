@@ -164,6 +164,7 @@ void RTC_set(uint16_t seconds)
     RTCAHOUR &= ~(0x80);
     RTCADOW &= ~(0x80);
     RTCADAY &= ~(0x80);
+
     // set rtc alarm in minutes and seconds
       if(minutes!=0){
         if(seconds!=0){
@@ -181,7 +182,6 @@ void RTC_set(uint16_t seconds)
       }
     // Interrupt from alarm                     						
     RTCCTL0_L = RTCAIE;
-    // RTCCTL0_H = 0x0;
     // start rtc
     RTCCTL1 &= ~(RTCHOLD);
 }
@@ -215,15 +215,10 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   tpl_checkpoint_buffer = l_buffer;
   
   uint8_t waiting_loop = 1;
-  // init_adc();
-  uint16_t predicted_time = 10;
+  uint16_t predicted_time = 20;
 
   while(waiting_loop){
-    P1OUT |= BIT4;
-    // tpl_rtc_set(predicted_time)
-    
     RTC_set(predicted_time);
-    // tpl_RTC_init();
     tpl_lpm_hibernate(); // go into sleep mode for a few seconds
 
     get_voltage_measurement();
@@ -236,14 +231,16 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
     {
       if (voltage_measurement[0] < voltage_measurement[1])
       {
-        // predicted_time = make_prediction();
+        P1OUT |= BIT4;
+        predicted_time = make_prediction();
         // predicted_time = calculate_prediction(predicted_time);
-        predicted_time = approx_prediction(predicted_time);
+        // predicted_time = approx_prediction(predicted_time);
+        // predicted_time = linear_prediction(predicted_time);
+        P1OUT &= ~BIT4;
         voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old measurement. 
       }   
     }
-    // When another measurement is taken it goes to the voltage_measurement[1]
-    P1OUT &= ~BIT4;
+    // When another measurement is taken , it is saved in voltage_measurement[1]
   }
 }
 
@@ -269,13 +266,18 @@ FUNC(void, OS_CODE) get_voltage_measurement(void)
 FUNC(uint16_t, OS_CODE) make_prediction(void)
 {
   // lookup table :: taylor series :: fixed point calculation
-  voltage_measurement[0] = ((voltage_measurement[0] + 32)>>6) * 64; // Rounding to the nearest multiple of 64
-  voltage_measurement[1] = ((voltage_measurement[1] + 32)>>6) * 64; // Values will now be between 1792 and 2816 in multiples of 64
+  voltage_measurement[0] = ((voltage_measurement[0] + 16)>>5) * 32; // Rounding to the nearest multiple of 32
+  voltage_measurement[1] = ((voltage_measurement[1] + 16)>>5) * 32; // Values will now be between 1792 and 2816 in multiples of 32
 
-  uint8_t v1 = (voltage_measurement[0] - 1792)>>6; // Getting index to be able to search in lookup table 
-  uint8_t v2 = (voltage_measurement[1] - 1792)>>6; // index 0-16
+  uint8_t v1 = (voltage_measurement[0] - 1792)>>5; // Getting index to be able to search in lookup table 
+  uint8_t v2 = (voltage_measurement[1] - 1792)>>5; // index 0-32
+  // Here --> n = 33 is the size of a 2D array that would represent the lookup table.  Instead of having the bottom half (incl. diagonal) 
+  // elements as 0, they have been removed and transformed into a 1D array 
+  // int((n*(n-1)/2)) - int((n-i)*((n-i)-1)/2) + j - i - 1 is the formula to access the top half triangle of the matrix. 
 
-  return lookup_time[v1][v2];
+  uint16_t index = 528 - (((33-v1)*((33-v1)-1))>>1) + v2 - v1 - 1; 
+
+  return lookup_time[index];
 }
 
 FUNC(uint16_t, OS_CODE) calculate_prediction(uint16_t old_pred)
@@ -297,10 +299,18 @@ FUNC(uint16_t, OS_CODE) approx_prediction(uint16_t old_pred)
   // factor is calculated as ( measured_V - 3.3 ) / 3.3 
   float factor = ((float)voltage_measurement[0] - 3300)/3300;
   uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) * 
-                                                     (factor - (factor*factor/2)) ; // + factor*factor*factor/3 ;
+                                                     (factor - (factor*factor/2) + (factor*factor*factor/3)) ;
                                                      
   return pred;
 }
+
+FUNC(uint16_t, OS_CODE) linear_prediction(uint16_t old_pred)
+{ 
+  // Linear extrapolation. y = mx+c => x = (y-c)/m || where m is the slope(difference in voltage/old_prediction, 
+  // c is the intercept which is voltage_measurement[0]) and y is the value at which we want to predict the time which is 3.3V (3300mV)
+  return ((3300 - voltage_measurement[0]) *(float)old_pred ) / (float)(voltage_measurement[1] - voltage_measurement[0]);
+}
+
 
 FUNC(void, OS_CODE) tpl_hibernate_os_service(void)
 {
