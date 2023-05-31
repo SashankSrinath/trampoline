@@ -143,7 +143,7 @@ void tpl_RTC_init()
 void RTC_set(uint16_t seconds)
 {
     uint8_t minutes = seconds/60;
-    
+    seconds %= 60;
     // Unlock RTC key protected registers
     RTCCTL0_H = RTCKEY_H;
     // Clear RTCAIE RTCAIFG and AE bits to prevent potential erroneous alarm condition
@@ -169,7 +169,7 @@ void RTC_set(uint16_t seconds)
       if(minutes!=0){
         if(seconds!=0){
             RTCSEC = 60-seconds;
-              RTCAMIN = (minutes | (1<<7));
+            RTCAMIN = (minutes | (1<<7));
           }
           else{
             RTCSEC = 0x00;
@@ -207,7 +207,9 @@ void tpl_lpm_hibernate()
 }
 
 FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
-  // P1OUT |= BIT4;
+  P1OUT &= ~BIT4; // For making prediction
+  P3OUT |= BIT0; // Inside the hibernate function
+
   sint16 l_buffer;
   l_buffer = (tpl_checkpoint_buffer + 1) % 2; // 2 Buffers to save the values with some gap
   // tpl_save_checkpoint();
@@ -219,26 +221,41 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
 
   while(waiting_loop){
     RTC_set(predicted_time);
-    tpl_lpm_hibernate(); // go into sleep mode for a few seconds
+    
+    P3OUT |= BIT1; // Device in LPM
+    tpl_lpm_hibernate(); // go into sleep mode
 
     get_voltage_measurement();
 
-    if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD){  // Here, check if enough voltage
-      tpl_RTC_stop(); // is present. If so, stop the clock and resume execution
+    if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD){  // Here, check if enough voltage is present. If so, stop the clock and resume execution
+      P3OUT &= ~BIT0; // Exit hibernation function
+      P3OUT &= ~BIT2; // Voltage is sufficient
+      tpl_RTC_stop(); 
 		  waiting_loop = 0;
 	  } 
     else 
     {
+      P3OUT |= BIT2; // Insufficient voltage
       if (voltage_measurement[0] < voltage_measurement[1])
       {
+        P3OUT &= ~BIT3; // First measurement is not greater than second
         P1OUT |= BIT4;
-        predicted_time = make_prediction();
+        // predicted_time = make_prediction();
         // predicted_time = calculate_prediction(predicted_time);
-        // predicted_time = approx_prediction(predicted_time);
+        predicted_time = approx_prediction(predicted_time);
         // predicted_time = linear_prediction(predicted_time);
         P1OUT &= ~BIT4;
-        voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old measurement. 
+        if (predicted_time > 180)
+        {
+          predicted_time = 180;
+        }
       }   
+      else 
+      {
+        predicted_time = 20;
+        P3OUT |= BIT3; //The first measurement is greater than the second
+      }
+    voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old measurement. 
     }
     // When another measurement is taken , it is saved in voltage_measurement[1]
   }
@@ -273,7 +290,7 @@ FUNC(uint16_t, OS_CODE) make_prediction(void)
   uint8_t v2 = (voltage_measurement[1] - 1792)>>5; // index 0-32
   // Here --> n = 33 is the size of a 2D array that would represent the lookup table.  Instead of having the bottom half (incl. diagonal) 
   // elements as 0, they have been removed and transformed into a 1D array 
-  // int((n*(n-1)/2)) - int((n-i)*((n-i)-1)/2) + j - i - 1 is the formula to access the top half triangle of the matrix. 
+  // int((n*(n-1)/2)) - int((n-i)*((n-i)-1)/2) + j - i - 1 is the formula to index the top half triangle of the matrix. 
 
   uint16_t index = 528 - (((33-v1)*((33-v1)-1))>>1) + v2 - v1 - 1; 
 
@@ -281,14 +298,14 @@ FUNC(uint16_t, OS_CODE) make_prediction(void)
 }
 
 FUNC(uint16_t, OS_CODE) calculate_prediction(uint16_t old_pred)
-{ // y = V_meas + V_max * ( 1 - e^( -x * slope / 3.5 ) ) was the equation of the line that best described the capacitor charging
+{ // y = V_meas + V_thresh * ( 1 - e^( -x * slope / 3.5 ) ) was the equation of the line that best described the capacitor charging
   // Here, since calc is done in mV, 3500 is used.
-  // To find time, which is x, theh equation becomes -> x = ( -3.5/slope ) * log(1 - ( y - V_meas ) / V_max )
+  // To find time, which is x, theh equation becomes -> x = ( -3.5/slope ) * log(1 - ( y - V_meas ) / V_thresh )
 
   // float slope = (voltage_measurement[1] - voltage_measurement[0])/predicted_time ;
   //div by pred_time(10) can be replaced by 3500*10 next line
   uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) *
-                                                      logf(1 - ((3300 - (float)voltage_measurement[0])/3300));
+                                                      logf(1 - ((3300 - (float)voltage_measurement[0] + 10)/3300)); // Adding 0.01 V for hibernation consumption
   return pred;
 }
 
@@ -297,7 +314,7 @@ FUNC(uint16_t, OS_CODE) approx_prediction(uint16_t old_pred)
   // Taylor series approximation -> to find approx of ln(x), use (x-1) - (x-1)²/2 + (x-1)³/3 ... More factors => more accuracy 
   // Instead of calculating factor = 1 - ( 3.3 - measured_V ) / 3.3 and then doing (factor - 1) - (factor-1)²/2 ...
   // factor is calculated as ( measured_V - 3.3 ) / 3.3 
-  float factor = ((float)voltage_measurement[0] - 3300)/3300;
+  float factor = ((float)voltage_measurement[0] - 3300 + 10)/3300;
   uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) * 
                                                      (factor - (factor*factor/2) + (factor*factor*factor/3)) ;
                                                      
@@ -368,6 +385,7 @@ void __attribute__((interrupt(RTC_VECTOR))) tpl_direct_irq_handler_RTC_VECTOR()
 {
   // Clear interrupt flag
   RTCCTL0_L &= ~RTCAIFG;
+  P3OUT &= ~BIT1; // Device not in LPM
   // Exit LPM
   LPM3_EXIT;
 }
