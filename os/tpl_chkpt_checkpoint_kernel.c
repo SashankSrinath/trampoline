@@ -67,7 +67,11 @@ VAR (sint16,OS_VAR) tpl_checkpoint_buffer = -1;
 
 #define OS_START_SEC_VAR_NON_VOLATILE_16BIT
 #include "tpl_memmap.h"
-VAR (uint16,OS_VAR) voltage_measurement[2] = {0,10};
+
+VAR (uint16,OS_VAR) voltage_measurement[2] = {0,0};
+VAR (uint16,OS_VAR) data[200] = {0};
+VAR (uint16,OS_VAR) index = 0;
+
 #define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
 #include "tpl_memmap.h"
 
@@ -166,20 +170,21 @@ void RTC_set(uint16_t seconds)
     RTCADAY &= ~(0x80);
 
     // set rtc alarm in minutes and seconds
-      if(minutes!=0){
-        if(seconds!=0){
-            RTCSEC = 60-seconds;
-            RTCAMIN = (minutes | (1<<7));
-          }
-          else{
-            RTCSEC = 0x00;
-            RTCAMIN = (minutes | (1<<7));
-          }
-      }
-      else{
-        RTCSEC = 60 - seconds;
-        RTCAMIN = ((RTCMIN + 1) | (1<<7));
-      }
+    if(minutes!=0){
+      if(seconds!=0){
+          RTCSEC = 60-seconds;
+          RTCAMIN = ((RTCMIN+minutes+1) | (1<<7));
+        }
+        else{
+          RTCSEC = 0x00;
+          RTCAMIN = ((RTCMIN+minutes) | (1<<7));
+        }
+    }
+    else{
+      RTCSEC = 60 - seconds;
+      RTCAMIN = ((RTCMIN + 1) | (1<<7));
+    }
+    
     // Interrupt from alarm                     						
     RTCCTL0_L = RTCAIE;
     // start rtc
@@ -208,7 +213,7 @@ void tpl_lpm_hibernate()
 
 FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   P1OUT &= ~BIT4; // For making prediction
-  P3OUT |= BIT0; // Inside the hibernate function
+  // P3OUT |= BIT0; // Inside the hibernate function
 
   sint16 l_buffer;
   l_buffer = (tpl_checkpoint_buffer + 1) % 2; // 2 Buffers to save the values with some gap
@@ -219,48 +224,97 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   uint8_t waiting_loop = 1;
   uint16_t predicted_time = 20;
 
-  while(waiting_loop){
+save_data(voltage_measurement[0]);
+save_data(predicted_time);
+
+while(1){
+
+  if(waiting_loop == 1){
+    P3OUT |= BIT1; // Device in LPM
+
     RTC_set(predicted_time);
     
-    P3OUT |= BIT1; // Device in LPM
+    P1OUT |= BIT0;
     tpl_lpm_hibernate(); // go into sleep mode
 
     get_voltage_measurement();
+    save_data(voltage_measurement[1]);
 
-    if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD){  // Here, check if enough voltage is present. If so, stop the clock and resume execution
-      P3OUT &= ~BIT0; // Exit hibernation function
+    if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD)
+    {  // Here, check if enough voltage is present. If so, stop the clock and resume execution
+      // P3OUT &= ~BIT0; // Exit hibernation function
       P3OUT &= ~BIT2; // Voltage is sufficient
-      tpl_RTC_stop(); 
-		  waiting_loop = 0;
-	  } 
+      // tpl_RTC_stop(); 
+      // waiting_loop = 0;
+      P1OUT &= ~BIT0;
+      P3OUT |= BIT0; // Pin for switching on transistor
+
+      predicted_time = 3; //check every 3 seconds 
+      waiting_loop = 2; 
+    } 
+
     else 
     {
       P3OUT |= BIT2; // Insufficient voltage
       if (voltage_measurement[0] < voltage_measurement[1])
       {
-        P3OUT &= ~BIT3; // First measurement is not greater than second
+        
         P1OUT |= BIT4;
-        // predicted_time = make_prediction();
-        // predicted_time = calculate_prediction(predicted_time);
-        predicted_time = approx_prediction(predicted_time);
+        predicted_time = LUT_prediction();
+        // predicted_time = exponential_prediction(predicted_time);
+        // predicted_time = approximate_prediction(predicted_time);
         // predicted_time = linear_prediction(predicted_time);
         P1OUT &= ~BIT4;
-        if (predicted_time > 180)
-        {
-          predicted_time = 180;
-        }
+        save_data(predicted_time);
+
       }   
-      else 
+
+      else if (voltage_measurement[0] > voltage_measurement[1])
       {
         predicted_time = 20;
-        P3OUT |= BIT3; //The first measurement is greater than the second
+        save_data(predicted_time);
       }
-    voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old measurement. 
+
+    voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old. When another measurement is taken, it is saved in voltage_measurement[1]
     }
-    // When another measurement is taken , it is saved in voltage_measurement[1]
+  }
+
+  if(waiting_loop == 2){       // To drain the capacitor until 1.9V
+    
+    RTC_set(predicted_time);
+    
+    P3OUT |= BIT1; // Device in LPM
+    tpl_lpm_hibernate(); // go into sleep mode
+
+    //switc off transistor before measuring
+    P3OUT &= ~BIT0;
+    get_voltage_measurement(); 
+    P3OUT |= BIT0; // switch on transistor
+
+  if (voltage_measurement[1] <= 1900)
+    {
+      save_data(voltage_measurement[1]);
+
+      P3OUT &= ~BIT0;
+      P1OUT &= ~BIT0;
+
+      predicted_time = 20;
+      save_data(predicted_time);
+      waiting_loop = 1;
+    }
+    voltage_measurement[0] = voltage_measurement[1];
   }
 }
 
+}
+
+
+FUNC(void, OS_CODE) save_data(uint16 write_data){
+  P3OUT |= BIT3;
+  data[index] = write_data;
+  index++;  
+  P3OUT &= ~BIT3;
+}
 
 FUNC(void, OS_CODE) get_voltage_measurement(void)
 {
@@ -280,14 +334,14 @@ FUNC(void, OS_CODE) get_voltage_measurement(void)
   }
 }
 
-FUNC(uint16_t, OS_CODE) make_prediction(void)
+FUNC(uint16_t, OS_CODE) LUT_prediction(void)
 {
   // lookup table :: taylor series :: fixed point calculation
-  voltage_measurement[0] = ((voltage_measurement[0] + 16)>>5) * 32; // Rounding to the nearest multiple of 32
-  voltage_measurement[1] = ((voltage_measurement[1] + 16)>>5) * 32; // Values will now be between 1792 and 2816 in multiples of 32
+  // voltage_measurement[0] = ((voltage_measurement[0] + 16)>>5) * 32; // Rounding to the nearest multiple of 32
+  // voltage_measurement[1] = ((voltage_measurement[1] + 16)>>5) * 32; // Values will now be between 1792 and 2816 in multiples of 32
 
-  uint8_t v1 = (voltage_measurement[0] - 1792)>>5; // Getting index to be able to search in lookup table 
-  uint8_t v2 = (voltage_measurement[1] - 1792)>>5; // index 0-32
+  uint8_t v1 = (voltage_measurement[0] - 1792 + 16)>>5; // Getting index to be able to search in lookup table 
+  uint8_t v2 = (voltage_measurement[1] - 1792 + 16)>>5; // index 0-32
   // Here --> n = 33 is the size of a 2D array that would represent the lookup table.  Instead of having the bottom half (incl. diagonal) 
   // elements as 0, they have been removed and transformed into a 1D array 
   // int((n*(n-1)/2)) - int((n-i)*((n-i)-1)/2) + j - i - 1 is the formula to index the top half triangle of the matrix. 
@@ -297,7 +351,7 @@ FUNC(uint16_t, OS_CODE) make_prediction(void)
   return lookup_time[index];
 }
 
-FUNC(uint16_t, OS_CODE) calculate_prediction(uint16_t old_pred)
+FUNC(uint16_t, OS_CODE) exponential_prediction(uint16_t old_pred)
 { // y = V_meas + V_thresh * ( 1 - e^( -x * slope / 3.5 ) ) was the equation of the line that best described the capacitor charging
   // Here, since calc is done in mV, 3500 is used.
   // To find time, which is x, theh equation becomes -> x = ( -3.5/slope ) * log(1 - ( y - V_meas ) / V_thresh )
@@ -305,16 +359,16 @@ FUNC(uint16_t, OS_CODE) calculate_prediction(uint16_t old_pred)
   // float slope = (voltage_measurement[1] - voltage_measurement[0])/predicted_time ;
   //div by pred_time(10) can be replaced by 3500*10 next line
   uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) *
-                                                      logf(1 - ((3300 - (float)voltage_measurement[0] + 10)/3300)); // Adding 0.01 V for hibernation consumption
+                                                      logf(1 - ((3300 - (float)voltage_measurement[0])/3300)); // Changing threshold from 3300 to 3100
   return pred;
 }
 
-FUNC(uint16_t, OS_CODE) approx_prediction(uint16_t old_pred)
+FUNC(uint16_t, OS_CODE) approximate_prediction(uint16_t old_pred)
 {
   // Taylor series approximation -> to find approx of ln(x), use (x-1) - (x-1)²/2 + (x-1)³/3 ... More factors => more accuracy 
   // Instead of calculating factor = 1 - ( 3.3 - measured_V ) / 3.3 and then doing (factor - 1) - (factor-1)²/2 ...
   // factor is calculated as ( measured_V - 3.3 ) / 3.3 
-  float factor = ((float)voltage_measurement[0] - 3300 + 10)/3300;
+  float factor = ((float)voltage_measurement[0] - 3300 )/3300;
   uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) * 
                                                      (factor - (factor*factor/2) + (factor*factor*factor/3)) ;
                                                      
@@ -325,7 +379,7 @@ FUNC(uint16_t, OS_CODE) linear_prediction(uint16_t old_pred)
 { 
   // Linear extrapolation. y = mx+c => x = (y-c)/m || where m is the slope(difference in voltage/old_prediction, 
   // c is the intercept which is voltage_measurement[0]) and y is the value at which we want to predict the time which is 3.3V (3300mV)
-  return ((3300 - voltage_measurement[0]) *(float)old_pred ) / (float)(voltage_measurement[1] - voltage_measurement[0]);
+  return ((3000 - voltage_measurement[0]) *(float)old_pred ) / (float)(voltage_measurement[1] - voltage_measurement[0]); 
 }
 
 
