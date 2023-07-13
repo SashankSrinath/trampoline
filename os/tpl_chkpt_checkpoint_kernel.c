@@ -69,7 +69,7 @@ VAR (sint16,OS_VAR) tpl_checkpoint_buffer = -1;
 #include "tpl_memmap.h"
 
 VAR (uint16,OS_VAR) voltage_measurement[2] = {0,0};
-VAR (uint16,OS_VAR) data[200] = {0};
+VAR (uint16,OS_VAR) data[400] = {0};
 VAR (uint16,OS_VAR) index = 0;
 
 #define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
@@ -214,7 +214,10 @@ void tpl_lpm_hibernate()
 FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   P1OUT &= ~BIT4; // For making prediction
   // P3OUT |= BIT0; // Inside the hibernate function
-
+    
+  P3OUT &= ~BIT0; // Switch off transistor before calling task again so that it doesnt continue to discharge 
+  P1OUT &= ~BIT0; // Switch of for pulseview
+    
   sint16 l_buffer;
   l_buffer = (tpl_checkpoint_buffer + 1) % 2; // 2 Buffers to save the values with some gap
   // tpl_save_checkpoint();
@@ -234,7 +237,7 @@ while(1){
 
     RTC_set(predicted_time);
     
-    P1OUT |= BIT0;
+    // P1OUT |= BIT0;
     tpl_lpm_hibernate(); // go into sleep mode
 
     get_voltage_measurement();
@@ -244,13 +247,15 @@ while(1){
     {  // Here, check if enough voltage is present. If so, stop the clock and resume execution
       // P3OUT &= ~BIT0; // Exit hibernation function
       P3OUT &= ~BIT2; // Voltage is sufficient
-      // tpl_RTC_stop(); 
-      // waiting_loop = 0;
-      P1OUT &= ~BIT0;
-      P3OUT |= BIT0; // Pin for switching on transistor
+      
+      // P1OUT &= ~BIT0;
+      // P3OUT |= BIT0; // Pin for switching on transistor
 
-      predicted_time = 3; //check every 3 seconds 
-      waiting_loop = 2; 
+      tpl_RTC_stop(); 
+      waiting_loop = 0;
+      
+      // predicted_time = 3; //check every 3 seconds 
+      // waiting_loop = 2; 
     } 
 
     else 
@@ -261,9 +266,16 @@ while(1){
         
         P1OUT |= BIT4;
         predicted_time = LUT_prediction();
+
         // predicted_time = exponential_prediction(predicted_time);
         // predicted_time = approximate_prediction(predicted_time);
         // predicted_time = linear_prediction(predicted_time);
+
+        if (predicted_time > 299) // Limit for now, the prediction to 5 minutes
+        {
+          predicted_time = 299;
+        }
+
         P1OUT &= ~BIT4;
         save_data(predicted_time);
 
@@ -279,31 +291,31 @@ while(1){
     }
   }
 
-  if(waiting_loop == 2){       // To drain the capacitor until 1.9V
+  // if(waiting_loop == 2){       // To drain the capacitor until 1.9V
     
-    RTC_set(predicted_time);
+  //   RTC_set(predicted_time);
     
-    P3OUT |= BIT1; // Device in LPM
-    tpl_lpm_hibernate(); // go into sleep mode
+  //   P3OUT |= BIT1; // Device in LPM
+  //   tpl_lpm_hibernate(); // go into sleep mode
 
-    //switc off transistor before measuring
-    P3OUT &= ~BIT0;
-    get_voltage_measurement(); 
-    P3OUT |= BIT0; // switch on transistor
+  //   //switc off transistor before measuring
+  //   P3OUT &= ~BIT0;
+  //   get_voltage_measurement(); 
+  //   P3OUT |= BIT0; // switch on transistor
 
-  if (voltage_measurement[1] <= 1900)
-    {
-      save_data(voltage_measurement[1]);
+  // if (voltage_measurement[1] <= 1900)
+  //   {
+  //     save_data(voltage_measurement[1]);
 
-      P3OUT &= ~BIT0;
-      P1OUT &= ~BIT0;
+  //     P3OUT &= ~BIT0;
+  //     P1OUT &= ~BIT0;
 
-      predicted_time = 20;
-      save_data(predicted_time);
-      waiting_loop = 1;
-    }
-    voltage_measurement[0] = voltage_measurement[1];
-  }
+  //     predicted_time = 20;
+  //     save_data(predicted_time);
+  //     waiting_loop = 1;
+  //   }
+  //   voltage_measurement[0] = voltage_measurement[1];
+  // }
 }
 
 }
@@ -311,6 +323,11 @@ while(1){
 
 FUNC(void, OS_CODE) save_data(uint16 write_data){
   P3OUT |= BIT3;
+  if (index >= 400)
+  {
+    index = 300; // Ensure safety of first 300 values 
+  }
+
   data[index] = write_data;
   index++;  
   P3OUT &= ~BIT3;
