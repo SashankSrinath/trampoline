@@ -40,11 +40,12 @@ end if
 
 if OS::RESURRECT then
  let APIUSED += APIMAP["resurrect"]
+ if OS::RESURRECT_S::EVENT then
+  let APIUSED += APIMAP["resurrect_event"]
+ end if
 end if
 
-if OS::RESURRECT_S::EVENT then
-  let APIUSED += APIMAP["resurrect_event"]
-end if
+
 
 if exists SEMAPHORE then
   if [SEMAPHORE length] > 0 then

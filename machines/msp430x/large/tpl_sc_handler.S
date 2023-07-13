@@ -50,7 +50,7 @@ tpl_kernel_stack_bottom:
 #include "tpl_as_memmap.h"
 
 /* test */
-#define MEASURE_OS_SERVICE_MSP 1
+#define MEASURE_OS_SERVICE_MSP 0
 
 /*=============================================================================
  * System call handler
@@ -200,7 +200,9 @@ tpl_sc_handler_id_ok:
   incx.b    &tpl_reentrancy_flag         /* surround the call by inc ...  */
   rlax.a    REG_SID                      /* index -> offset               */
   rlax.a    REG_SID                      /* index -> offset               */
-  calla     tpl_dispatch_table(REG_SID)  /* func ptrs in dispatch table   */
+  movx.a    tpl_dispatch_table(REG_SID), REG_SID
+  ; calla     tpl_dispatch_table(REG_SID)  /* func ptrs in dispatch table   */
+  calla     REG_SID
   decx.b    &tpl_reentrancy_flag         /* ... and dec of the flag.      */
 /*-----------------------------------------------------------------------------
  -8- From there, REG_RETARG holds the return value. It is put at its location
@@ -474,7 +476,9 @@ tpl_sc_handler_no_context_switch:
 tpl_sc_handler_from_hook:
   rlax.a      REG_SID                      /* index -> offset               */
   rlax.a      REG_SID                      /* index -> offset               */
-  calla     tpl_dispatch_table(REG_SID)
+  movx.a    tpl_dispatch_table(REG_SID), REG_SID
+  ; calla     tpl_dispatch_table(REG_SID)  /* func ptrs in dispatch table   */
+  calla     REG_SID
   #if MEASURE_OS_SERVICE_MSP == 1
     mov.b #00h, &P3OUT 
   #endif

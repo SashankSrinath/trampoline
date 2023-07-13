@@ -2,6 +2,7 @@
 #include "tpl_os.h"
 
 extern unsigned _chkptStartAddress_0;
+extern unsigned _chkptStartAddress_1;
 extern unsigned __data_start;
 extern unsigned __tpl_end_of_checkpointing_zone;
 
@@ -9,55 +10,55 @@ extern unsigned __tpl_end_of_checkpointing_zone;
 #define OS_START_SEC_CODE
 #include "tpl_memmap.h"
 
-FUNC(void, OS_CODE) tpl_save_checkpoint(){
-    // if(tpl_checkpoint_buffer == -1){
-    //     return;
-    // }
-    unsigned *ptr_chkpt = & _chkptStartAddress_0;
+FUNC(void, OS_CODE) tpl_save_checkpoint(tpl_checkpoint_buffer){
+    if(tpl_checkpoint_buffer == -1){
+        return;
+    }
     unsigned *ptr_sram_start = & __data_start;
     unsigned *ptr_sram_stop = & __tpl_end_of_checkpointing_zone;
     
-    // if(tpl_checkpoint_buffer == 0){
+    if(tpl_checkpoint_buffer == 0){
+    unsigned *ptr_chkpt = & _chkptStartAddress_0;
         while(ptr_sram_start != ptr_sram_stop){
             *ptr_chkpt = *ptr_sram_start;
             ptr_chkpt++;
             ptr_sram_start++;
         }
-    // }
-    // else{
-    //     *ptr_chkpt += 256;
-    //     while(ptr_sram_start != ptr_sram_stop){
-    //         *ptr_chkpt = *ptr_sram_start;
-    //         ptr_chkpt++;
-    //         ptr_sram_start++;
-    //     }
-    // }
+    }
+    else{
+        unsigned *ptr_chkpt = & _chkptStartAddress_1;
+        while(ptr_sram_start != ptr_sram_stop){
+            *ptr_chkpt = *ptr_sram_start;
+            ptr_chkpt++;
+            ptr_sram_start++;
+        }
+    }
     return;
 }
 
-FUNC(void, OS_CODE) tpl_load_checkpoint (){
-    // if(tpl_checkpoint_buffer == -1){
-    //     return;
-    // }
-    unsigned *ptr_chkpt = & _chkptStartAddress_0;
+FUNC(void, OS_CODE) tpl_load_checkpoint (tpl_checkpoint_buffer){
+    if(tpl_checkpoint_buffer == -1){
+        return;
+    }
     unsigned *ptr_sram_start = & __data_start;
     unsigned *ptr_sram_stop = & __tpl_end_of_checkpointing_zone; 
 
-    // if(tpl_checkpoint_buffer == 0){
+    if(tpl_checkpoint_buffer == 0){
+        unsigned *ptr_chkpt = & _chkptStartAddress_0;
         while(ptr_sram_start != ptr_sram_stop){
             *ptr_sram_start = *ptr_chkpt;
             ptr_chkpt++;
             ptr_sram_start++;
         }
-    // }
-    // else{
-    //     *ptr_chkpt += 256;
-    //     while(ptr_sram_start != ptr_sram_stop){
-    //         *ptr_sram_start = *ptr_chkpt;
-    //         ptr_chkpt++;
-    //         ptr_sram_start++;
-    //     }
-    // }
+    }
+    else{
+        unsigned *ptr_chkpt = & _chkptStartAddress_1;
+        while(ptr_sram_start != ptr_sram_stop){
+            *ptr_sram_start = *ptr_chkpt;
+            ptr_chkpt++;
+            ptr_sram_start++;
+        }
+    }
     return;  
 }
 

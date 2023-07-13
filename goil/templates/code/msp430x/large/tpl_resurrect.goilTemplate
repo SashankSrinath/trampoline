@@ -54,11 +54,11 @@ foreach resurrect_transition in RESURRECT_TRANSITION do
   end if
 end foreach
 
-let listAlarm := @[]
-foreach al in ALARM do
-  let key := al::NAME
-  let listAlarm[key] := INDEX
-end foreach
+#let listAlarm := @[]
+#foreach al in ALARM do
+#  let key := al::NAME
+#  let listAlarm[key] := INDEX
+#end foreach
 
 let listFunc := @[]
 foreach resurrect_transition in RESURRECT_TRANSITION do
@@ -100,15 +100,19 @@ foreach resurrect_transition in RESURRECT_TRANSITION do
 %
 FUNC(void, OS_APPL_CODE) % !item% (void){   
 %
-      if exists resurrect_transition::ALARM then
-      foreach resurrect_transition_alarm in resurrect_transition::ALARM
+tab(5) % //initMicrophone();
+%
+      if exists resurrect_transition::ALARM_RESURRECT then
+      foreach resurrect_transition_alarm in resurrect_transition::ALARM_RESURRECT
       do
-       foreach al in ALARM 
+       foreach al in ALARM_RESURRECT 
        do
        if resurrect_transition_alarm::VALUE == al::NAME then
-
-tab(5) %SetRelAlarm(%!al::NAME%, %!al::ALARMTIME%, %!al::CYCLETIME%);
-%     
+tab(5) %SetNbAlarmActivation(%!al::ALARM%, %!al::NB_ACTIVATION%);
+%
+tab(5) %SetRelAlarm(%!al::ALARM%, %!al::ALARMTIME%, %!al::CYCLETIME%);
+% 
+    
       end if
       end foreach  
       end foreach
@@ -117,19 +121,80 @@ tab(5) %SetRelAlarm(%!al::NAME%, %!al::ALARMTIME%, %!al::CYCLETIME%);
 tab(5) !resurrect_transition_func::VALUE%();
 %
       after
-      if exists resurrect_transition::ALARM then
-      foreach resurrect_transition_alarm in resurrect_transition::ALARM
-      do
-       foreach al in ALARM 
-       do
-       if resurrect_transition_alarm::VALUE == al::NAME then
-      tab(5) %WaitEvent(ev_%!al::NAME%);
+      if exists resurrect_transition::ALARM_RESURRECT then
+      let listAlResurrect := @[]
+
+     foreach item_al in resurrect_transition::ALARM_RESURRECT do
+     let key := item_al::VALUE
+     let listAlResurrectLength := [listAlResurrect length]
+     if listAlResurrectLength == 0 then
+       let listAlResurrect[key] := key
+     else
+     foreach token in listAlResurrect do
+       if token == key then
+       else
+         let listAlResurrect[key] := key
+       end if
+     end foreach
+     end if
+    end foreach
+     
+#     let list_event_al_res := @[]
+#     foreach al_resurrect in ALARM 
+#     do
+#     foreach al in ALARM_RESURRECT do
+#       if al_resurrect::VALUE == al::NAME then
+#       let key := al::EV
+#       let list_event_al_resLength := [list_event_al_res length]
+#
+#     if list_event_al_resLength == 0 then
+#       let list_event_al_res[key] := key
+#     else
+#     foreach token in list_event_al_res do
+#       if token == key then
+#       else
+#         let list_event_al_res[key] := key
+#       end if
+#     end foreach
+#     end if
+#     end if 
+#     end foreach
+#     end foreach
+     
+
+tab(5)%EventMaskType myEventMask;
 %
-      tab(5) %ClearEvent(ev_%!al::NAME%);
+foreach al_resurrect in resurrect_transition::ALARM_RESURRECT 
+do
+tab(5)%WaitEvent(%
+foreach al_ev in ALARM 
+ do
+ if exists al_ev::EV then
+ foreach item_ev in al_ev::EV do
+ !item_ev::VALUE 
+ end foreach
+ end if between% | % after %);
 %
-      end if
-      end foreach 
-      end foreach
+end foreach
+tab(5)%GetEvent(resurrect, myEventMask);
+%
+tab(5)%ClearEvent(myEventMask);
+%
+end foreach
+#      foreach resurrect_transition_alarm in resurrect_transition::ALARM_RESURRECT
+#      do
+#       foreach al in ALARM_RESURRECT
+#       do
+#       if resurrect_transition_alarm::VALUE == al::NAME then
+#      tab(5) %WaitEvent(%!al::EV%);
+#%
+#      tab(5) %ClearEvent(%!al::EV%);
+#%
+#      tab(5) % CancelAlarm(%!al::ALARM%);
+#%
+#      end if
+#      end foreach 
+#      end foreach
       end if
 tab(5)%TerminateStepResurrect();
 }

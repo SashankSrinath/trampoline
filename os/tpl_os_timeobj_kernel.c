@@ -412,12 +412,15 @@ FUNC(void, OS_CODE) tpl_counter_tick(
             #if WITH_RESURRECT == YES
             if(t_obj->nb_iteration == 0){
               /* reset nb_iteration and don't rearm the alarm */
-              t_obj->nb_iteration = t_obj->reset_iteration;
+              // t_obj->nb_iteration = t_obj->reset_iteration;
               t_obj->cycle = 0;
+              tpl_remove_time_obj(t_obj);
+              t_obj->state = ALARM_SLEEP;
               /* set event to release current step */
 
               // TODO: put id of resurrect task instead of hardcoded 0
               tpl_set_event(0, t_obj->al_event);
+              // Reschedule
             }
             #endif /* WITH_RESURRECT */
             /*  rearm the alarm if needed               */

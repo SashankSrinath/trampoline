@@ -418,6 +418,16 @@ CPU api {
      LOCK_KERNEL = FALSE;
      CALLABLE_BY_ISR1 = FALSE;
    } : "Terminate the current activity and start another one if possible.";
+   
+   SYSCALL SetNbAlarmActivation {
+     KERNEL = tpl_set_activation_alarm_service;
+     LOCK_KERNEL = FALSE;
+     CALLABLE_BY_ISR1 = FALSE;
+     ARGUMENT alarm_id { KIND = CONST; TYPE = AlarmType; } 
+      : "The identifier of the alarm" ;
+     ARGUMENT set_nb_activation { KIND = VAR; TYPE = int; }
+        : "Number of activation of alarm.";
+   } : "Set the number of activation of alarm.";
   };
   
   APICONFIG resurrect_event {

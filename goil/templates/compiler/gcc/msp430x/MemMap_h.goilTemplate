@@ -57,7 +57,7 @@
 #endif
 
 %
-foreach SECTION_KIND in @( "_NOINIT_","_POWER_ON_INIT_","_FAST_","_NON_VOLATILE_","_" ) do
+foreach SECTION_KIND in @( "_NOINIT_","_POWER_ON_INIT_","_FAST_","_NON_VOLATILE_","_FRAM_UP_","_" ) do
   foreach DATA_SIZE in @( "32BIT","16BIT","8BIT","BOOLEAN","UNSPECIFIED" ) do
 %
 #ifdef OS_START_SEC_VAR% !SECTION_KIND !DATA_SIZE %

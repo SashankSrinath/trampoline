@@ -98,7 +98,7 @@ VAR(tpl_sequence_alarm, OS_VAR) % !transition::NAME%_alarm[% !alarm_count%] = {
 %{%!listAlarm[alarm::VALUE]   %    /* id alarm */
 ,%!al::ALARMTIME          %    /* alarm time */
 ,%!al::CYCLETIME          %    /* cycle time */
-,%!al::NB_ACTIVATION      %    /* number of acitvation of alarm */
+,%!al::NB_ACTIVATION      %    /* number of activation of alarm */
 ,%!al::NB_ACTIVATION      %    /* constant to reset number of activation */
 }%
    end if 

@@ -58,7 +58,13 @@ if OS::RESURRECT then
 %
     /* Number of iteration of alarm */  %!alarm::NB_ACTIVATION%,
     /* Constant to reset iteration  */  %!alarm::NB_ACTIVATION%,
-    /* Event to release step        */  %!alarm::EV%,%
+%
+if exists alarm::EV then
+  foreach al in alarm::EV do
+%
+    /* Event to release step        */  %!al::VALUE%,%
+  end foreach
+end if
 end if
 if alarm::AUTOSTART then
 %

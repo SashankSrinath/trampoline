@@ -34,6 +34,7 @@
 #include "tpl_trace.h"
 #include "tpl_os_hooks.h"
 #include "tpl_chkpt_checkpoint_kernel.h"
+#include "tpl_chkpt_adc.h"
 
 #include "msp430.h"
 #include <stdint.h>
@@ -41,6 +42,10 @@
 #include "tpl_chkpt_adc.h"
 
 #include <math.h> // For computing the predicted time online
+
+#if WITH_RESURRECT == YES
+#include "tpl_resurrect_kernel.h"
+#endif /* WITH_RESURRECT */
 
 #if NUMBER_OF_CORES > 1
 #include "tpl_os_multicore_kernel.h"
@@ -52,9 +57,6 @@
 #include "tpl_sequence_kernel.h"
 #endif
 
-#if WITH_RESURRECT == YES
-#include "tpl_resurrect_kernel.h"
-#endif
 
 extern FUNC(void, OS_CODE) tpl_restart_os(void);
 
@@ -79,7 +81,6 @@ VAR (uint16,OS_VAR) index = 0;
 #include "tpl_memmap.h"
 
 void init_adc() {
-
   static uint8_t use1V2Ref = 0;
 
   ADC12CTL0 &= ~ADC12ENC;                     // disable ADC
@@ -516,17 +517,18 @@ FUNC(void, OS_CODE) tpl_restart_os_service(void)
      * if such a task exists.
      */
   
-  P1OUT |= BIT5;
-  // tpl_load_checkpoint();
-  tpl_load_checkpoint_dma(tpl_checkpoint_buffer);
-  P1OUT &= ~BIT5;
+  // P1OUT |= BIT5;
+  tpl_load_checkpoint(tpl_checkpoint_buffer);
+  /* Avoid using DMA with ADC linked to DMA */
+  // tpl_load_checkpoint_dma(tpl_checkpoint_buffer);
+  // P1OUT &= ~BIT5;
   #if WITH_SEQUENCING == YES
     tpl_choose_next_sequence();
     tpl_start(CORE_ID_OR_NOTHING(core_id));
   #endif
 
   #if WITH_RESURRECT == YES
-    P1OUT &= ~BIT5;
+    // P1OUT &= ~BIT5;
     tpl_choose_next_step();
     // tpl_start(CORE_ID_OR_NOTHING(core_id));
     tpl_start(CORE_ID_OR_NOTHING(core_id));

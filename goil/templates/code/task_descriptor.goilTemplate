@@ -98,10 +98,6 @@ CONST(tpl_proc_static, OS_CONST) % !task::NAME %_task_stat_desc = {
   /* context                  */  % !task::NAME %_CONTEXT,
   /* stack                    */  % !task::NAME %_STACK,
 %
-#if OS::RESURRECT then
-#%  /* entry point (function)   is moved to dynamic descriptor with RESURRECT*/%
-#else
-
 if exists task::FUNC then
 %  /* entry point (function)   */  % !task::FUNC %,%
 elsif task::NAME == "resurrect" then
@@ -109,7 +105,6 @@ elsif task::NAME == "resurrect" then
 else
 %  /* entry point (function)   */  % !task::NAME %_function,%
 end if
-#end if
 %
   /* internal ressource       */  %
 if task::USEINTERNALRESOURCE then

@@ -30,7 +30,7 @@
 #include "tpl_compiler.h"
 #include "tpl_os_internal_types.h"
 #include "tpl_os_kernel.h"
-
+#include <stdint.h>
 /**
  * @typedef EventResurrectType
  *
@@ -40,6 +40,8 @@
 typedef uint16 tpl_event_resurrect;
 
 typedef tpl_event_resurrect  EventResurrectType;
+
+typedef int NumberActivationType;
 
 struct TPL_STEP
 {
@@ -81,6 +83,12 @@ extern CONSTP2CONST(tpl_step_ref, AUTOMATIC,
 #define OS_STOP_SEC_CONST_UNSPECIFIED
 #include "tpl_memmap.h"
 
+#define OS_START_SEC_VAR_NON_VOLATILE_16BIT
+#include "tpl_memmap.h"
+extern VAR(uint16_t, AUTOMATIC) result_adc;
+#define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
+#include "tpl_memmap.h"
+
 #define OS_START_SEC_CODE
 #include "tpl_memmap.h"
 
@@ -91,7 +99,8 @@ FUNC(void, OS_CODE) tpl_terminate_step_resurrect_service(void);
 
 FUNC(void, OS_CODE) tpl_choose_next_step(void);
 
-FUNC(void, OS_CODE) tpl_set_event_resurrect_service(CONST(EventResurrectType, AUTOMATIC) event_resurrect);
+FUNC(void, OS_CODE) tpl_set_activation_alarm_service(CONST(tpl_alarm_id, AUTOMATIC)  alarm_id, VAR(int, AUTOMATIC) set_nb_activation);
+
 #define OS_STOP_SEC_CODE
 #include "tpl_memmap.h"
 

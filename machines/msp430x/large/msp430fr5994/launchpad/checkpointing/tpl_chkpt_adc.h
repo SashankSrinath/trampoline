@@ -7,12 +7,12 @@
  * Function should be defined in board specific code.
  */
 
-FUNC(void, OS_APPL_CODE) tpl_adc_init_simple(bool use1V2Ref);
+FUNC(void, OS_APPL_CODE) tpl_adc_init_simple(bool use1V2Ref, uint16_t * ptr_result_adc);
 
 FUNC(void, OS_APPL_CODE) tpl_adc_init(void);
 
 uint16_t readPowerVoltage(void);
 
-uint16_t readPowerVoltage_simple(void);
+void readPowerVoltage_simple(void);
 
 #endif

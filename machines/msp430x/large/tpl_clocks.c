@@ -61,6 +61,7 @@ FUNC(void,OS_CODE) tpl_set_mcu_clock(uint16_t freq)
 	CSCTL2 |= SELM__DCOCLK;             /* .. and set correct DCO value)        */
 
 	CSCTL3 &= ~(DIVM0 | DIVM1 | DIVM2); /*  clear DIVM Field (source divider)   */
+
 	/*
 	* Wait states for the FRAM are required above 8 MHz (1), and 16 MHz (2):
 	* When we change the clock settings, we must be sure that the wait states

@@ -121,9 +121,7 @@ FUNC (void, OS_CODE) tpl_init_machine_generic (void)
 
 FUNC(void, OS_CODE) tpl_init_machine_specific (void)
 {
-	#if WITH_SYSTICK == YES
 	tpl_set_systick_timer(); //TODO a remettre.
-	#endif
 	//tpl_init_external_interrupts();
 	//tpl_init_it_priority();
 }
@@ -139,13 +137,16 @@ FUNC(void, OS_CODE) tpl_set_systick_timer()
         CSCTL5 &= ~LFXTOFFG;                  // Clear LFXT fault flag
         SFRIFG1 &= ~OFIFG;
     } while (SFRIFG1 & OFIFG);              // Test oscillator fault flag
+	
     CSCTL0_H = 0;                           // Lock CS registers
-    
+
+	#if WITH_SYSTICK == YES    
 	/* Set up timer TA3 with ACLK. ACLK is set to LFXTCLK at start : 32.768 kHz */
 	TA3CCR0 = 0;          /* lock the timer */
 	TA3CTL = TASSEL__ACLK /* ACLK */ | ID__1 /* divide by 1 */ | MC__UP /* Up count */ ;
 	TA3CCTL0 |= CCIE;     /* enable the compare interrupt */
 	TA3CCR0 = 32;         /* start with a 1.007 ms period (33/32768) */
+	#endif
 }
 
 #define OS_STOP_SEC_CODE
