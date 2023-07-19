@@ -63,13 +63,6 @@ extern FUNC(void, OS_CODE) tpl_restart_os(void);
 #define OS_START_SEC_VAR_NON_VOLATILE_16BIT
 #include "tpl_memmap.h"
 VAR (sint16,OS_VAR) tpl_checkpoint_buffer = -1;
-#define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
-#include "tpl_memmap.h"
-
-
-#define OS_START_SEC_VAR_NON_VOLATILE_16BIT
-#include "tpl_memmap.h"
-
 VAR (uint16,OS_VAR) voltage_measurement[2] = {0,0};
 VAR (uint16,OS_VAR) data[400] = {0};
 VAR (uint16,OS_VAR) index = 0;
@@ -213,27 +206,29 @@ void tpl_lpm_hibernate()
 }
 
 FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
+  
   P1OUT &= ~BIT4; // For making prediction
   // P3OUT |= BIT0; // Inside the hibernate function
     
   P3OUT &= ~BIT0; // Switch off transistor before calling task again so that it doesnt continue to discharge 
   P1OUT &= ~BIT0; // Switch of for pulseview
-    
+
+  P2VAR(uint16_t, AUTOMATIC, OS_VAR) result_adc_adc = &result_adc;
   sint16 l_buffer;
-  l_buffer = (tpl_checkpoint_buffer + 1) % 2; // 2 Buffers to save the values with some gap
-  // tpl_save_checkpoint();
-  tpl_save_checkpoint_dma(l_buffer); // Done to ensure that data is not lost 
+  l_buffer = (tpl_checkpoint_buffer + 1) % 2;
+  tpl_save_checkpoint(l_buffer);
+  /* Avoid using DMA with ADC linked to DMA */
+  // tpl_save_checkpoint_dma(l_buffer);
   tpl_checkpoint_buffer = l_buffer;
-  
-  uint8_t waiting_loop = 1;
-  uint16_t predicted_time = 20;
 
-save_data(voltage_measurement[0]);
-save_data(predicted_time);
+  uint16_t waiting_loop = 1;
+  // init_adc();
+  uint16_t predicted_time = 10;
 
-while(1){
+  save_data(voltage_measurement[0]);
+  save_data(predicted_time);
 
-  if(waiting_loop == 1){
+  while(waiting_loop == 1){
     P3OUT |= BIT1; // Device in LPM
 
     RTC_set(predicted_time);
@@ -241,31 +236,20 @@ while(1){
     // P1OUT |= BIT0;
     tpl_lpm_hibernate(); // go into sleep mode
 
-    get_voltage_measurement();
+    /* Get energy level from ADC */
+    get_voltage_measurement(result_adc_adc);
     save_data(voltage_measurement[1]);
-
+ 
     if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD)
-    {  // Here, check if enough voltage is present. If so, stop the clock and resume execution
-      // P3OUT &= ~BIT0; // Exit hibernation function
-      P3OUT &= ~BIT2; // Voltage is sufficient
-      
-      // P1OUT &= ~BIT0;
-      // P3OUT |= BIT0; // Pin for switching on transistor
-
+    { 
       tpl_RTC_stop(); 
       waiting_loop = 0;
-      
-      // predicted_time = 3; //check every 3 seconds 
-      // waiting_loop = 2; 
     } 
 
     else 
     {
-      P3OUT |= BIT2; // Insufficient voltage
       if (voltage_measurement[0] < voltage_measurement[1])
       {
-        
-        P1OUT |= BIT4;
         predicted_time = LUT_prediction();
 
         // predicted_time = exponential_prediction(predicted_time);
@@ -284,43 +268,14 @@ while(1){
 
       else if (voltage_measurement[0] > voltage_measurement[1])
       {
-        predicted_time = 20;
+        predicted_time = 10;
         save_data(predicted_time);
       }
 
     voltage_measurement[0] = voltage_measurement[1]; // Setting new measurement to the old. When another measurement is taken, it is saved in voltage_measurement[1]
     }
   }
-
-  // if(waiting_loop == 2){       // To drain the capacitor until 1.9V
-    
-  //   RTC_set(predicted_time);
-    
-  //   P3OUT |= BIT1; // Device in LPM
-  //   tpl_lpm_hibernate(); // go into sleep mode
-
-  //   //switc off transistor before measuring
-  //   P3OUT &= ~BIT0;
-  //   get_voltage_measurement(); 
-  //   P3OUT |= BIT0; // switch on transistor
-
-  // if (voltage_measurement[1] <= 1900)
-  //   {
-  //     save_data(voltage_measurement[1]);
-
-  //     P3OUT &= ~BIT0;
-  //     P1OUT &= ~BIT0;
-
-  //     predicted_time = 20;
-  //     save_data(predicted_time);
-  //     waiting_loop = 1;
-  //   }
-  //   voltage_measurement[0] = voltage_measurement[1];
-  // }
 }
-
-}
-
 
 FUNC(void, OS_CODE) save_data(uint16 write_data){
   P3OUT |= BIT3;
@@ -334,22 +289,27 @@ FUNC(void, OS_CODE) save_data(uint16 write_data){
   P3OUT &= ~BIT3;
 }
 
-FUNC(void, OS_CODE) get_voltage_measurement(void)
+FUNC(void, OS_CODE) get_voltage_measurement(uint16 result_adc_adc)
 {
-/* Get energy level from ADC */
-  bool use1V2Ref = true;
-  tpl_adc_init_simple(use1V2Ref); 
-  uint16_t energy = readPowerVoltage_simple();
-  if(energy == 0x0FFF){ // 12 bit ADC, Can read upto 1111 1111 1111. Setting use1V2ref to True means when the value is 0xFFF, 
-                        //  we have 1.2V ref. So the actual value is 2.4
-    use1V2Ref = false;
-    tpl_adc_init_simple(use1V2Ref);
-    energy = readPowerVoltage_simple();
-    voltage_measurement[1] = energy;
-  }
-  else{
-    voltage_measurement[1] = energy*3/5;
-  }
+    bool use1V2Ref = true;
+    tpl_adc_init_simple(use1V2Ref, result_adc_adc); 
+    readPowerVoltage_simple();
+    // uint16_t energy = (~result_adc)+1;
+    uint16_t energy = result_adc;
+    if(energy == 0x0FFF)
+    { 
+      use1V2Ref = false;
+      tpl_adc_init_simple(use1V2Ref, result_adc_adc);
+      readPowerVoltage_simple();
+      energy = result_adc;
+      voltage_measurement[1] = energy;
+    }
+
+    else
+    {
+      voltage_measurement[1] = energy*3/5;
+    }
+
 }
 
 FUNC(uint16_t, OS_CODE) LUT_prediction(void)

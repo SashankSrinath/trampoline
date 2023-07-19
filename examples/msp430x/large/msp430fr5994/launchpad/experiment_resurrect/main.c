@@ -12,8 +12,8 @@ FUNC(void, OS_APPL_CODE) io_init()
     P3DIR = 0xFF;
     
     P1OUT &= ~(BIT0 + BIT1);
-    P3OUT &= ~BIT0;     // Set GPIO P3.0 as output (transistor switch)
-
+    // P3OUT &= ~BIT0;     // Set GPIO P3.0 as output (transistor switch)
+    P3OUT = 0x00;
 	// Disable the GPIO power-on default high-impedance mode
 	// to activate previously configured port settings
 	PM5CTL0 &= ~LOCKLPM5;
@@ -45,7 +45,10 @@ FUNC(void, OS_APPL_CODE) transistor_on(void){
 	
     P1OUT |= BIT0;
     P3OUT |= BIT0; // Switch on the transistor for a duration to drain the capac
-    for (volatile uint32_t i = 0; i < 400000; i++);
+    for (volatile uint32_t i = 0; i < 200000; i++);
+
+    P1OUT &= ~(BIT0 + BIT1);
+    P3OUT &= ~BIT0;
 
     return;
 }

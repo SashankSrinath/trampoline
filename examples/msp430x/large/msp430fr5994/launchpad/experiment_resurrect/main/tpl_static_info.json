@@ -1,0 +1,40 @@
+
+{
+  "alarm" : [],
+  "event" : [],
+  "ioc" : [],
+  "isr" : 
+  [
+    
+    {
+      "CATEGORY" : 1,
+      "EXIT_FROM_LPM" : "true",
+      "KIND" : "ISR",
+      "NAME" : "adc_sampling",
+      "PRIORITY" : 26,
+      "SOURCE" : "DMA_VECTOR",
+      "SOURCE_S" : 
+      {
+        "BIT" : 2
+      },
+      "STACKSIZE" : 100
+    }
+  ],
+  "message" : [],
+  "resource" : [],
+  "task" : 
+  [
+    
+    {
+      "ACTIVATION" : 1,
+      "AUTOSTART" : "false",
+      "KIND" : "Task",
+      "NAME" : "resurrect",
+      "NONPREEMPTABLE" : "false",
+      "PRIORITY" : 1,
+      "SCHEDULE" : "FULL",
+      "STACKSIZE" : 200,
+      "USEINTERNALRESOURCE" : "false"
+    }
+  ]
+}

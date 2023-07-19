@@ -79,6 +79,6 @@ CPU base {
     SOURCE = DMA_VECTOR {BIT=2;};
     EXIT_FROM_LPM = TRUE;
   };
-  
+
 };
  
