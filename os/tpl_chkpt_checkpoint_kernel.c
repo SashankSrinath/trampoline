@@ -66,7 +66,7 @@ VAR (sint16,OS_VAR) tpl_checkpoint_buffer = -1;
 VAR (uint16,OS_VAR) voltage_measurement[2] = {0,0};
 VAR (uint16,OS_VAR) data[400] = {0};
 VAR (uint16,OS_VAR) index = 0;
-
+VAR (uint8,OS_VAR) switch_pred = 1;
 #define OS_STOP_SEC_VAR_NON_VOLATILE_16BIT
 #include "tpl_memmap.h"
 
@@ -212,7 +212,10 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
     
   P3OUT &= ~BIT0; // Switch off transistor before calling task again so that it doesnt continue to discharge 
   P1OUT &= ~BIT0; // Switch of for pulseview
-
+  
+  uint16_t total_pred = 0;
+  uint8_t count_prediction  = 0;
+  
   P2VAR(uint16_t, AUTOMATIC, OS_VAR) result_adc_adc = &result_adc;
   sint16 l_buffer;
   l_buffer = (tpl_checkpoint_buffer + 1) % 2;
@@ -222,17 +225,60 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
   tpl_checkpoint_buffer = l_buffer;
 
   uint16_t waiting_loop = 1;
-  // init_adc();
-  uint16_t predicted_time = 10;
+  uint16_t predicted_time;
+   
+   // init_adc();
+
+  switch(switch_pred)
+  {
+    case 0:
+      predicted_time = 10;
+      break;
+    case 1:
+      predicted_time = 20;
+      break;
+    case 2:
+      predicted_time = 30;
+      break;   
+    case 3:
+      predicted_time = 60;
+      break;    
+    default:
+      predicted_time = 30;
+  }
 
   save_data(voltage_measurement[0]);
-  save_data(predicted_time);
 
   while(waiting_loop == 1){
-    P3OUT |= BIT1; // Device in LPM
-
-    RTC_set(predicted_time);
     
+    count_prediction++;
+
+    if (count_prediction > 2){
+      switch(switch_pred)
+      {
+        case 0:
+          predicted_time = 10;
+          break;
+        case 1:
+          predicted_time = 20;
+          break;
+        case 2:
+          predicted_time = 30;
+          break;   
+        case 3:
+          predicted_time = 60;
+          break;    
+        default:
+          predicted_time = 30;
+      }
+      count_prediction = 1;
+    }
+
+    P3OUT |= BIT1; // Device in LPM
+    total_pred += predicted_time;
+    save_data(predicted_time);
+    RTC_set(predicted_time);
+
     // P1OUT |= BIT0;
     tpl_lpm_hibernate(); // go into sleep mode
 
@@ -242,6 +288,15 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
  
     if(voltage_measurement[1] > RESUME_FROM_HIBERNATE_THRESHOLD)
     { 
+      if (total_pred < 60) // Adapt for short predictions to 10s initial pred
+        switch_pred = 0;
+      else if(total_pred >= 60 && total_pred < 120)
+        switch_pred = 1;
+      else if(total_pred >= 120 && total_pred < 200)
+        switch_pred = 2;
+      else if(total_pred >= 200)
+        switch_pred = 3;
+
       tpl_RTC_stop(); 
       waiting_loop = 0;
     } 
@@ -251,24 +306,24 @@ FUNC(void, OS_CODE) tpl_chkpt_hibernate(void){
       if (voltage_measurement[0] < voltage_measurement[1])
       {
         predicted_time = LUT_prediction();
-
         // predicted_time = exponential_prediction(predicted_time);
         // predicted_time = approximate_prediction(predicted_time);
         // predicted_time = linear_prediction(predicted_time);
 
-        if (predicted_time > 299) // Limit for now, the prediction to 5 minutes
+        if (predicted_time > 599) // Limit the prediction to 10 minutes and wake up
         {
-          predicted_time = 299;
+          predicted_time = 599;
         }
 
         P1OUT &= ~BIT4;
-        save_data(predicted_time);
+        
 
       }   
 
       else if (voltage_measurement[0] > voltage_measurement[1])
       {
-        predicted_time = 10;
+        predicted_time = 20;
+        total_pred += predicted_time;
         save_data(predicted_time);
       }
 
@@ -318,15 +373,31 @@ FUNC(uint16_t, OS_CODE) LUT_prediction(void)
   // voltage_measurement[0] = ((voltage_measurement[0] + 16)>>5) * 32; // Rounding to the nearest multiple of 32
   // voltage_measurement[1] = ((voltage_measurement[1] + 16)>>5) * 32; // Values will now be between 1792 and 2816 in multiples of 32
 
-  uint8_t v1 = (voltage_measurement[0] - 1792 + 16)>>5; // Getting index to be able to search in lookup table 
-  uint8_t v2 = (voltage_measurement[1] - 1792 + 16)>>5; // index 0-32
+  uint8_t v1 = (voltage_measurement[0] - 1824 + 16)>>5; // Getting index to be able to search in lookup table 
+  uint8_t v2 = (voltage_measurement[1] - 1824 + 16)>>5; // index 0-32
   // Here --> n = 33 is the size of a 2D array that would represent the lookup table.  Instead of having the bottom half (incl. diagonal) 
   // elements as 0, they have been removed and transformed into a 1D array 
   // int((n*(n-1)/2)) - int((n-i)*((n-i)-1)/2) + j - i - 1 is the formula to index the top half triangle of the matrix. 
 
-  uint16_t index = 528 - (((33-v1)*((33-v1)-1))>>1) + v2 - v1 - 1; 
+  uint16_t index = 703 - (((38-v1)*((38-v1)-1))>>1) + v2 - v1 - 1; 
 
-  return lookup_time[index];
+  if(switch_pred == 0)
+  {
+    return lookup_time_10s[index];
+  }
+  else if(switch_pred == 1)
+  {
+    return lookup_time_20s[index];
+  }
+  else if(switch_pred == 2)
+  {
+    return lookup_time_30s[index];
+  }
+  else if(switch_pred == 3)
+  {
+    return lookup_time_60s[index];
+  }
+  
 }
 
 FUNC(uint16_t, OS_CODE) exponential_prediction(uint16_t old_pred)
@@ -337,7 +408,7 @@ FUNC(uint16_t, OS_CODE) exponential_prediction(uint16_t old_pred)
   // float slope = (voltage_measurement[1] - voltage_measurement[0])/predicted_time ;
   //div by pred_time(10) can be replaced by 3500*10 next line
   uint16_t pred = (-3500*(float)old_pred / (float)(voltage_measurement[1] - voltage_measurement[0])) *
-                                                      logf(1 - ((3300 - (float)voltage_measurement[0])/3300)); // Changing threshold from 3300 to 3100
+                                                      logf(1 - ((3200 - (float)voltage_measurement[0])/3200));
   return pred;
 }
 
